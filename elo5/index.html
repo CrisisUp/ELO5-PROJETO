@@ -130,11 +130,11 @@
                     <span class="font-semibold text-white" id="stat-devices-count">145/150</span>
                 </div>
 
-                <!-- Cameras Active -->
+                <!-- Modo de operação: bancada (demo liberado) ou operação real -->
                 <div class="flex items-center space-x-2 bg-elo-bg px-3 py-1.5 rounded-lg border border-elo-border">
                     <i class="fa-solid fa-video text-elo-teal"></i>
-                    <span class="text-gray-400">Câmeras:</span>
-                    <span class="font-semibold text-white">12/12 Ativas</span>
+                    <span class="text-gray-400">Modo:</span>
+                    <span class="font-semibold text-white" id="op-mode-label">Bancada</span>
                 </div>
 
                 <!-- Active Alerts -->
@@ -335,14 +335,14 @@
                     <!-- Simulation Triggers & Actions -->
                     <div class="flex items-center space-x-3 w-full md:w-auto justify-end">
                         
-                        <!-- Auto Sim Toggle (demo traffic via real POST /api/logs, origin=simulacao) -->
-                        <button id="btn-toggle-sim" onclick="toggleAutoSimulation()" title="Gera tráfego demo via POST /api/logs (origin=simulacao)" class="flex items-center space-x-2 bg-elo-bg border border-elo-teal/50 hover:border-elo-teal text-white text-xs px-3.5 py-2 rounded-lg font-medium transition shadow-sm">
+                        <!-- Auto Sim Toggle (demo traffic via real POST /api/logs, origin=simulacao; oculto em operação real) -->
+                        <button id="btn-toggle-sim" data-demo-only="1" onclick="toggleAutoSimulation()" title="Gera tráfego demo via POST /api/logs (origin=simulacao)" class="flex items-center space-x-2 bg-elo-bg border border-elo-teal/50 hover:border-elo-teal text-white text-xs px-3.5 py-2 rounded-lg font-medium transition shadow-sm">
                             <span id="sim-indicator" class="w-2 h-2 rounded-full bg-red-500"></span>
                             <span id="sim-text">Simulação: OFF</span>
                         </button>
 
-                        <!-- Manual Event Generator Modal Trigger -->
-                        <button onclick="openManualEventModal()" class="flex items-center space-x-2 bg-elo-teal hover:bg-elo-tealHover text-black font-semibold text-xs px-3.5 py-2 rounded-lg transition shadow-lg shadow-elo-teal/20">
+                        <!-- Manual Event Generator Modal Trigger (demo; oculto em operação real) -->
+                        <button data-demo-only="1" onclick="openManualEventModal()" class="flex items-center space-x-2 bg-elo-teal hover:bg-elo-tealHover text-black font-semibold text-xs px-3.5 py-2 rounded-lg transition shadow-lg shadow-elo-teal/20">
                             <i class="fa-solid fa-plus"></i>
                             <span>Disparar Evento</span>
                         </button>
@@ -797,6 +797,14 @@
                     empBadge = `<span class="font-semibold text-amber-400 bg-amber-950/40 px-2 py-0.5 rounded border border-amber-800/40">Não Identificado</span>`;
                 }
 
+                // Origin badge — zero-fake: simulated/manual rows are visibly labeled
+                let originBadge = '';
+                if (log.origin === 'simulacao') {
+                    originBadge = ` <span class="inline-block align-middle ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide bg-sky-950/70 text-sky-300 border border-sky-800/60" title="Registro simulado (origin=simulacao)">SIM</span>`;
+                } else if (log.origin === 'manual') {
+                    originBadge = ` <span class="inline-block align-middle ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide bg-gray-900 text-gray-400 border border-gray-800" title="Registro manual (origin=manual)">MANUAL</span>`;
+                }
+
                 // Face preview thumbnail with target bounding frame
                 let faceThumb = '';
                 if (log.faceDetected && log.employee) {
@@ -825,7 +833,7 @@
                         <td class="py-3 px-4 font-mono text-gray-300">${escapeHtml(log.timestamp)}</td>
                         <td class="py-3 px-4 font-medium text-white">${escapeHtml(log.location)}</td>
                         <td class="py-3 px-4">${cameraBadge}</td>
-                        <td class="py-3 px-4">${empBadge}</td>
+                        <td class="py-3 px-4">${empBadge}${originBadge}</td>
                         <td class="py-3 px-4 text-center">${faceThumb}</td>
                         <td class="py-3 px-4 text-right">
                             <button onclick="viewLogDetail('${log.id}')" class="text-xs bg-elo-bg hover:bg-elo-teal hover:text-black text-elo-teal border border-elo-teal/40 font-medium px-2.5 py-1 rounded transition flex items-center gap-1 ml-auto">
@@ -878,16 +886,32 @@
             const lat = document.getElementById('server-latency');
             const t0 = performance.now();
             try {
-                await api('/api/health');
+                const health = await api('/api/health');
                 const ms = Math.round(performance.now() - t0);
                 dot.className = 'h-3 w-3 rounded-full bg-emerald-500 animate-pulse';
                 label.innerText = 'API Local';
                 lat.innerText = 'Latência: ' + ms + 'ms';
+                applyOpMode(health && health.auth && health.auth.operatorRequired);
             } catch (e) {
                 dot.className = 'h-3 w-3 rounded-full bg-red-500';
                 label.innerText = 'API Offline';
                 lat.innerText = 'sem conexão — suba com: node server.js';
             }
+        }
+
+        // Modo operação: com OPERATOR_TOKEN setado, o painel esconde os controles
+        // demo (simulação + evento manual) e sinaliza "Operação real". Sem auth,
+        // segue em "Bancada" com demo liberado. Linhas simuladas ganham badge SIM.
+        function applyOpMode(real) {
+            const modeLabel = document.getElementById('op-mode-label');
+            if (modeLabel) {
+                modeLabel.innerText = real ? 'Operação real' : 'Bancada';
+                modeLabel.className = 'font-semibold ' + (real ? 'text-elo-teal' : 'text-amber-400');
+            }
+            document.querySelectorAll('[data-demo-only]').forEach((el) => {
+                el.style.display = real ? 'none' : '';
+            });
+            if (real && autoSimulationActive) toggleAutoSimulation();
         }
 
         // Prepend a freshly created log (already persisted in SQLite)
