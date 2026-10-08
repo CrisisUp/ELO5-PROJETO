@@ -5,7 +5,8 @@
   "description": "Elo5 System — API + SQLite + ponte MQTT (Fase 2: ESP32 Armazém B)",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test test/pure.test.js test/config-middlewares.test.js"
   },
   "dependencies": {
     "mqtt": "^5.10.0"
