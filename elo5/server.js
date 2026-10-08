@@ -27,7 +27,31 @@ function loadDotEnv() {
 }
 loadDotEnv();
 
-const PORT = process.env.PORT || 3000;
+const config = require('./lib/config');
+const {
+  isOperatorAuthorized: isOperatorAuthorizedWith,
+  currentActor: currentActorWith,
+} = require('./lib/middlewares/operator');
+const { createRateLimiter, getClientIp: getClientIpLib, checkRateLimit: checkRateLimitLib } = require('./lib/middlewares/rateLimit');
+const { API_SECURITY_HEADERS, isBridgeAuthorized: isBridgeAuthorizedWith } = require('./lib/middlewares/security');
+const {
+  buildTelemetryCsv: buildTelemetryCsvLib,
+  validateMqttUser: validateMqttUserLib,
+  normalizeTelemetrySample: normalizeTelemetrySampleLib,
+  capExportLimit: capExportLimitLib,
+} = require('./lib/pure');
+
+const PORT = config.PORT;
+const OPERATOR_TOKEN = config.OPERATOR_TOKEN;
+const STALE_AFTER_MS = config.STALE_AFTER_MS;
+const RATE_LIMIT_MAX = config.RATE_LIMIT_MAX;
+const TELEMETRY_RETENTION_DAYS = config.TELEMETRY_RETENTION_DAYS;
+const TELEMETRY_EXPORT_MAX = config.TELEMETRY_EXPORT_MAX;
+const BRIDGE_MAX_RETRIES = config.BRIDGE_MAX_RETRIES;
+const BRIDGE_RETRY_MS = config.BRIDGE_RETRY_MS;
+const CMD_ACTIONS = config.CMD_ACTIONS;
+const rateLimiter = createRateLimiter(RATE_LIMIT_MAX);
+const rateBuckets = rateLimiter.buckets;
 const ROOT = __dirname;
 const db = new DatabaseSync(path.join(ROOT, 'elo5.db'));
 
@@ -197,51 +221,27 @@ function sendJson(res, status, data) {
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(s),
-    // P1 hardening: minimal security headers on every API response.
-    'X-Content-Type-Options': 'nosniff',
-    'X-Frame-Options': 'DENY',
-    'Referrer-Policy': 'no-referrer',
+    // P1 hardening: minimal security headers on every API response (fiado em lib/).
+    ...API_SECURITY_HEADERS,
   });
   res.end(s);
 }
 
-// ---- P1: hardening + operator auth + staleness helpers ----
+// ---- P1: hardening + operator auth + staleness helpers (fiado em lib/) ----
 function getClientIp(req) {
-  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-  return fwd || req.socket?.remoteAddress || 'local';
+  return getClientIpLib(req);
 }
 
 // Simple fixed-window rate limit for mutating routes (in-memory, per IP).
 // Returns true when allowed, false when the caller should answer 429.
 function checkRateLimit(req) {
-  const ip = getClientIp(req);
-  const now = Date.now();
-  let b = rateBuckets.get(ip);
-  if (!b || now > b.resetAt) {
-    b = { count: 0, resetAt: now + 60000 };
-    rateBuckets.set(ip, b);
-  }
-  b.count++;
-  if (rateBuckets.size > 1000) {
-    // Evict expired buckets opportunistically to bound memory.
-    for (const [k, v] of rateBuckets) if (now > v.resetAt) rateBuckets.delete(k);
-  }
-  return b.count <= RATE_LIMIT_MAX;
-}
-
-function getOperatorToken(req) {
-  const h = String(req.headers['x-operator-token'] || '').trim();
-  if (h) return h;
-  const auth = String(req.headers['authorization'] || '');
-  const m = auth.match(/^Bearer\s+(.+)$/i);
-  return m ? m[1].trim() : '';
+  return checkRateLimitLib(req, rateBuckets, RATE_LIMIT_MAX);
 }
 
 // When OPERATOR_TOKEN is empty the API stays in open local mode (P0 behavior).
+// (isOperatorAuthorizedWith vem do require no topo.)
 function isOperatorAuthorized(req) {
-  if (!OPERATOR_TOKEN) return true;
-  const tok = getOperatorToken(req);
-  return tok.length > 0 && tok === OPERATOR_TOKEN;
+  return isOperatorAuthorizedWith(req, OPERATOR_TOKEN);
 }
 
 function requireOperator(req, res) {
@@ -297,17 +297,11 @@ function pruneTelemetry() {
 }
 
 // P1: persist one telemetry sample (best-effort; keeps last_telemetry working as before).
+// Parsing fiado em lib/pure.js (normalizeTelemetrySampleLib) — mesma regra, testada.
 function insertTelemetrySample(deviceId, data) {
-  if (!data || typeof data !== 'object') return;
-  const num = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  };
-  const dist = data.dist !== undefined ? num(data.dist) : (data.distance_cm !== undefined ? num(data.distance_cm) : null);
-  const pir = data.pir ? 1 : 0;
-  const ldr = data.ldr !== undefined ? num(data.ldr) : null;
-  const anom = data.ldr_anomaly ? 1 : 0;
-  if (dist == null && ldr == null && !pir && !anom) return;
+  const s = normalizeTelemetrySampleLib(data);
+  if (!s) return;
+  const { dist, pir, ldr, ldrAnomaly: anom } = s;
   db.prepare(
     `INSERT INTO telemetry (device_id, timestamp, dist, pir, ldr, ldr_anomaly)
      VALUES (?, ?, ?, ?, ?, ?)`
@@ -426,30 +420,9 @@ function handleCreateLog(body, res) {
 }
 
 // ---- Phase 2: device live-state + command queue (used by mqtt-bridge.js) ----
-const CMD_ACTIONS = new Set(['arm', 'disarm', 'reset_alarm', 'test', 'recalibrate']);
-// P0: retry/ACK config — bridge re-sends un-ACKed commands until the ESP
-// confirms via .../state (or matching .../log). Env-overridable, .env supported.
-const BRIDGE_MAX_RETRIES = Math.max(1, parseInt(process.env.BRIDGE_MAX_RETRIES || '5', 10) || 5);
-const BRIDGE_RETRY_MS = Math.max(1000, parseInt(process.env.BRIDGE_RETRY_MS || '5000', 10) || 5000);
+// Config fiada em lib/config.js no topo (PORT, OPERATOR_TOKEN, STALE_AFTER_MS,
+// RATE_LIMIT_MAX, TELEMETRY_*, BRIDGE_*, CMD_ACTIONS). Só o estado mutável fica aqui.
 let bridgeStatus = { connected: false, updatedAt: null };
-// ---- P1: operator auth + hardening + staleness ----
-// OPERATOR_TOKEN: when set, mutating API routes require
-// `x-operator-token: <token>` or `Authorization: Bearer <token>`.
-// Empty (default) = open local mode, same as P0 (avoids breaking existing setup).
-const OPERATOR_TOKEN = String(process.env.OPERATOR_TOKEN || '').trim();
-// STALE_AFTER_MS: device with no bridge touch for longer than this is
-// reported OFFLINE (staleness-based, survives bridge restarts).
-const STALE_AFTER_MS = Math.max(15000, parseInt(process.env.STALE_AFTER_MS || '90000', 10) || 90000);
-// RATE_LIMIT_MAX: max mutating requests per IP per minute (simple in-memory).
-const RATE_LIMIT_MAX = Math.max(10, parseInt(process.env.RATE_LIMIT_MAX || '120', 10) || 120);
-const rateBuckets = new Map(); // ip -> { count, resetAt }
-// ---- P2: telemetry retention + export ----
-// TELEMETRY_RETENTION_DAYS: samples older than this are pruned (0 = keep all).
-const _RET_RAW = String(process.env.TELEMETRY_RETENTION_DAYS ?? '').trim();
-const TELEMETRY_RETENTION_DAYS = _RET_RAW === ''
-  ? 30 : Math.max(0, parseInt(_RET_RAW, 10) || 0);
-// TELEMETRY_EXPORT_MAX: cap rows per /api/telemetry/export (CSV/JSON).
-const TELEMETRY_EXPORT_MAX = Math.min(20000, Math.max(100, parseInt(process.env.TELEMETRY_EXPORT_MAX || '5000', 10) || 5000));
 
 // P0: does an observed device state satisfy a queued command?
 function commandSatisfiedByState(action, armed, alarming) {
@@ -568,7 +541,7 @@ function handlePatchDevice(deviceId, body, res) {
 }
 
 function handleQueueCommand(deviceId, body, res, req) {
-  const currentActor = isOperatorAuthorized(req) && OPERATOR_TOKEN ? 'operator:token' : 'operator';
+  const currentActor = currentActorWith(req, OPERATOR_TOKEN);
   const dev = db.prepare('SELECT * FROM devices WHERE id = ?').get(deviceId);
   if (!dev) return sendJson(res, 404, { error: 'dispositivo não encontrado' });
   if (!dev.mqtt_node) return sendJson(res, 400, { error: 'dispositivo sem nó MQTT (não é controlável)' });
@@ -690,7 +663,7 @@ function queryTelemetryExport(url) {
   const deviceId = (url.searchParams.get('device_id') || '').trim();
   const since = (url.searchParams.get('since') || '').trim();
   const until = (url.searchParams.get('until') || '').trim();
-  const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '1000', 10) || 1000, 1), TELEMETRY_EXPORT_MAX);
+  const limit = capExportLimitLib(url.searchParams.get('limit'), TELEMETRY_EXPORT_MAX);
   const conds = [];
   const params = [];
   if (deviceId) { conds.push('device_id = ?'); params.push(deviceId); }
@@ -713,16 +686,7 @@ function handleTelemetryExport(url, res) {
   if (format !== 'csv') {
     return sendJson(res, 400, { error: 'format inválido (csv, json)' });
   }
-  const esc = (v) => {
-    if (v === null || v === undefined) return '';
-    const s = String(v);
-    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-  };
-  const lines = ['device_id,timestamp,dist_cm,pir,ldr,ldr_anomaly'];
-  for (const r of rows.reverse()) {
-    lines.push([esc(r.device_id), esc(r.timestamp), esc(r.dist), esc(r.pir), esc(r.ldr), esc(r.ldr_anomaly)].join(','));
-  }
-  const s = lines.join('\n') + '\n';
+  const s = buildTelemetryCsvLib(rows.reverse());
   res.writeHead(200, {
     'Content-Type': 'text/csv; charset=utf-8',
     'Content-Length': Buffer.byteLength(s),
@@ -737,20 +701,18 @@ function handleTelemetryExport(url, res) {
 function handleMqttUserRotation(deviceId, body, res, req) {
   const dev = db.prepare('SELECT * FROM devices WHERE id = ?').get(deviceId);
   if (!dev) return sendJson(res, 404, { error: 'dispositivo não encontrado' });
-  if (body.mqtt_user === undefined) return sendJson(res, 400, { error: 'mqtt_user é obrigatório' });
-  const mqttUser = body.mqtt_user == null ? '' : String(body.mqtt_user).trim();
-  if (mqttUser && !/^[A-Za-z0-9._-]{1,64}$/.test(mqttUser)) {
-    return sendJson(res, 400, { error: 'mqtt_user inválido (use letras, números, ponto, _ ou -)' });
-  }
+  const check = validateMqttUserLib(body.mqtt_user);
+  if (check.error) return sendJson(res, 400, { error: check.error });
+  const mqttUser = check.value;
   db.prepare('UPDATE devices SET mqtt_user = ?, last_seen = last_seen WHERE id = ?')
     .run(mqttUser || null, deviceId);
-  const actor = isOperatorAuthorized(req) && OPERATOR_TOKEN ? 'operator:token' : 'operator';
+  const actor = currentActorWith(req, OPERATOR_TOKEN);
   writeAudit('mqtt-rotation', deviceId, `mqtt_user ${dev.mqtt_user || '(vazio)'} → ${mqttUser || '(vazio)'} — trocar a senha no broker (mosquitto_passwd) e no ESP (MQTT_PASSWORD)`, actor);
   sendJson(res, 200, toDeviceDTO(db.prepare('SELECT * FROM devices WHERE id = ?').get(deviceId)));
 }
 
 function isBridgeAuthorized(req) {
-  return req.headers['x-bridge-key'] === (process.env.BRIDGE_KEY || 'elo5-local-bridge');
+  return isBridgeAuthorizedWith(req, config.BRIDGE_KEY);
 }
 
 // ---- Static files ----
