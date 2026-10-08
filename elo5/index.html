@@ -1,0 +1,1449 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:,">
+    <title>Elo5 System - Sistema de Log IoT</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        elo: {
+                            bg: '#0b0f19',
+                            card: '#111827',
+                            border: '#1f2937',
+                            hover: '#1e293b',
+                            teal: '#00b894',
+                            tealHover: '#00a383',
+                            tealGlow: 'rgba(0, 184, 148, 0.25)',
+                            darkBlue: '#0d1527',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    keyframes: {
+                        pulseGlow: {
+                            '0%, 100%': { boxShadow: '0 0 15px rgba(0, 184, 148, 0.3)' },
+                            '50%': { boxShadow: '0 0 25px rgba(0, 184, 148, 0.7)' }
+                        },
+                        flashNew: {
+                            '0%': { backgroundColor: 'rgba(0, 184, 148, 0.3)', transform: 'translateY(-4px)' },
+                            '100%': { backgroundColor: 'transparent', transform: 'translateY(0)' }
+                        },
+                        scanline: {
+                            '0%': { transform: 'translateY(-100%)' },
+                            '100%': { transform: 'translateY(100%)' }
+                        }
+                    },
+                    animation: {
+                        'pulse-glow': 'pulseGlow 2s infinite',
+                        'flash-new': 'flashNew 1s ease-out',
+                        'scan': 'scanline 2.5s linear infinite'
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Chart.js for Analytics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Custom Style Overrides -->
+    <style>
+        /* Custom scrollbar for dark theme */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0b0f19;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1f2937;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #00b894;
+        }
+        .face-box {
+            border: 2px solid #00b894;
+            box-shadow: 0 0 8px rgba(0, 184, 148, 0.8);
+        }
+        .scan-overlay {
+            background: linear-gradient(to bottom, transparent 0%, rgba(0, 184, 148, 0.2) 50%, transparent 100%);
+        }
+    </style>
+</head>
+<body class="bg-elo-bg text-gray-200 font-sans min-h-screen flex flex-col antialiased selection:bg-elo-teal selection:text-black">
+
+    <!-- Top Header Navigation -->
+    <header class="bg-elo-card border-b border-elo-border sticky top-0 z-40 shadow-xl">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            
+            <!-- Brand Logo and Title -->
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center space-x-3 cursor-pointer select-none">
+                    <!-- SVG Logo matching Elo5 interlocking rings -->
+                    <svg class="h-9 w-auto" viewBox="0 0 200 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <!-- Ring 1 White -->
+                        <ellipse cx="60" cy="50" rx="38" ry="24" stroke="white" stroke-width="10" transform="rotate(-15 60 50)" />
+                        <!-- Ring 2 Teal -->
+                        <ellipse cx="115" cy="50" rx="38" ry="24" stroke="#00b894" stroke-width="10" transform="rotate(-15 115 50)" />
+                    </svg>
+                    <div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xl font-bold tracking-wider text-white">ELO5</span>
+                            <span class="text-xs font-semibold text-elo-teal tracking-widest uppercase bg-elo-teal/10 px-2 py-0.5 rounded">System</span>
+                        </div>
+                        <p class="text-[10px] text-gray-400 font-medium tracking-tight">PLATAFORMA IoT & TELEMETRIA</p>
+                    </div>
+                </div>
+
+                <div class="hidden md:block h-6 w-px bg-elo-border mx-2"></div>
+                <h1 class="hidden md:block text-sm font-medium text-gray-300">Sistema de Log IoT em Tempo Real</h1>
+            </div>
+
+            <!-- Top Status Bar Indicators -->
+            <div class="hidden lg:flex items-center space-x-6 text-xs">
+                <!-- Online Devices -->
+                <div class="flex items-center space-x-2 bg-elo-bg px-3 py-1.5 rounded-lg border border-elo-border">
+                    <span class="relative flex h-2.5 w-2.5">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                    </span>
+                    <span class="text-gray-400">Dispositivos Online:</span>
+                    <span class="font-semibold text-white" id="stat-devices-count">145/150</span>
+                </div>
+
+                <!-- Cameras Active -->
+                <div class="flex items-center space-x-2 bg-elo-bg px-3 py-1.5 rounded-lg border border-elo-border">
+                    <i class="fa-solid fa-video text-elo-teal"></i>
+                    <span class="text-gray-400">Câmeras:</span>
+                    <span class="font-semibold text-white">12/12 Ativas</span>
+                </div>
+
+                <!-- Active Alerts -->
+                <div class="flex items-center space-x-2 bg-elo-bg px-3 py-1.5 rounded-lg border border-elo-border">
+                    <i class="fa-solid fa-triangle-exclamation text-amber-400"></i>
+                    <span class="text-gray-400">Alertas Hoje:</span>
+                    <span class="font-semibold text-amber-400" id="stat-alerts-count">2</span>
+                </div>
+
+                <!-- Live Clock -->
+                <div class="flex items-center space-x-2 bg-elo-bg/80 px-3 py-1.5 rounded-lg border border-elo-teal/30 text-elo-teal font-mono font-medium">
+                    <i class="fa-regular fa-clock"></i>
+                    <span id="live-clock">00:00:00 UTC-3</span>
+                </div>
+            </div>
+
+            <!-- User Profile & Settings -->
+            <div class="flex items-center space-x-3">
+                <!-- P1: operator token (só exigido se OPERATOR_TOKEN estiver setado no server.js) -->
+                <input id="operator-token" type="password" placeholder="Token operador" title="Token do operador (x-operator-token). Necessário só se OPERATOR_TOKEN estiver configurado no servidor."
+                    class="hidden w-32 bg-elo-bg border border-elo-border text-[11px] rounded-lg px-2.5 py-1.5 text-gray-300 placeholder-gray-600 focus:outline-none focus:border-elo-teal transition font-mono">
+                <button id="btn-sound-toggle" onclick="toggleAudio()" title="Alternar Som de Notificação" class="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-elo-border transition">
+                    <i class="fa-solid fa-volume-high text-sm" id="sound-icon"></i>
+                </button>
+                <div class="flex items-center space-x-3 bg-elo-bg border border-elo-border p-1.5 pl-3 rounded-full">
+                    <div class="text-right hidden sm:block">
+                        <p class="text-xs font-semibold text-white leading-none">Admin Elo5</p>
+                        <p class="text-[10px] text-elo-teal font-medium">Supervisão Geral</p>
+                    </div>
+                    <div class="w-8 h-8 rounded-full bg-elo-teal/20 border border-elo-teal flex items-center justify-center text-elo-teal font-bold text-xs">
+                        AD
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- Top Summary Cards & Controls -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            
+            <!-- Card 1: Total Logs -->
+            <div class="bg-elo-card border border-elo-border rounded-xl p-4 flex items-center justify-between hover:border-elo-teal/40 transition">
+                <div>
+                    <p class="text-xs font-medium text-gray-400 uppercase tracking-wider">Total de Eventos (Hoje)</p>
+                    <p class="text-2xl font-bold text-white mt-1" id="metric-total-logs">1,284</p>
+                    <p class="text-[11px] text-emerald-400 mt-0.5 flex items-center gap-1">
+                        <i class="fa-solid fa-arrow-trend-up"></i> +12% em relação a ontem
+                    </p>
+                </div>
+                <div class="w-12 h-12 rounded-lg bg-elo-teal/10 border border-elo-teal/30 flex items-center justify-center text-elo-teal text-xl">
+                    <i class="fa-solid fa-list-check"></i>
+                </div>
+            </div>
+
+            <!-- Card 2: Recognition Rate -->
+            <div class="bg-elo-card border border-elo-border rounded-xl p-4 flex items-center justify-between hover:border-elo-teal/40 transition">
+                <div>
+                    <p class="text-xs font-medium text-gray-400 uppercase tracking-wider">Acurácia IA Facial</p>
+                    <p class="text-2xl font-bold text-white mt-1">98.8%</p>
+                    <p class="text-[11px] text-elo-teal mt-0.5 flex items-center gap-1">
+                        <i class="fa-solid fa-shield-halved"></i> Reconhecimento Ativo
+                    </p>
+                </div>
+                <div class="w-12 h-12 rounded-lg bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 text-xl">
+                    <i class="fa-solid fa-user-gear"></i>
+                </div>
+            </div>
+
+            <!-- Card 3: Camera Capture Status -->
+            <div class="bg-elo-card border border-elo-border rounded-xl p-4 flex items-center justify-between hover:border-elo-teal/40 transition">
+                <div>
+                    <p class="text-xs font-medium text-gray-400 uppercase tracking-wider">Capturas com Foto</p>
+                    <p class="text-2xl font-bold text-white mt-1" id="metric-captures-count">942</p>
+                    <p class="text-[11px] text-gray-400 mt-0.5">73.3% dos acessos</p>
+                </div>
+                <div class="w-12 h-12 rounded-lg bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 text-xl">
+                    <i class="fa-solid fa-camera"></i>
+                </div>
+            </div>
+
+            <!-- Card 4: System Mode -->
+            <div class="bg-elo-card border border-elo-border rounded-xl p-4 flex items-center justify-between hover:border-elo-teal/40 transition">
+                <div>
+                    <p class="text-xs font-medium text-gray-400 uppercase tracking-wider">Status do Servidor</p>
+                    <div class="flex items-center gap-2 mt-1">
+                        <span id="server-dot" class="h-3 w-3 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span class="text-lg font-bold text-white" id="server-status">API Local</span>
+                    </div>
+                    <p class="text-[11px] text-emerald-400 mt-0.5" id="server-latency">Latência: —</p>
+                </div>
+                <div class="w-12 h-12 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-xl">
+                    <i class="fa-solid fa-server"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Dashboard Split Layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+
+            <!-- Left Panel: IoT Network Telemetry & Live Activity Chart -->
+            <div class="lg:col-span-1 space-y-6">
+                
+                <!-- Live Event Stream Speed Chart -->
+                <div class="bg-elo-card border border-elo-border rounded-xl p-4 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center gap-2">
+                            <i class="fa-solid fa-chart-line text-elo-teal"></i> Telemetria — Distância (cm)
+                        </h2>
+                        <span class="text-[10px] text-elo-teal bg-elo-teal/10 px-1.5 py-0.5 rounded font-mono">AO VIVO</span>
+                    </div>
+                    <div class="h-36 w-full">
+                        <canvas id="liveChart"></canvas>
+                    </div>
+                    <div class="flex items-center justify-between gap-2">
+                        <p class="text-[10px] text-gray-500 font-mono">Fonte: GET /api/telemetry (HC-SR04 do Armazém B)</p>
+                        <!-- P2: export CSV/JSON da telemetria (respeita retenção; exige operador se auth on) -->
+                        <div class="flex gap-1.5">
+                            <button onclick="exportTelemetry('csv')" title="Baixar telemetria em CSV" class="text-[10px] font-semibold px-2 py-1 rounded bg-elo-bg border border-elo-border text-gray-300 hover:border-elo-teal transition">CSV</button>
+                            <button onclick="exportTelemetry('json')" title="Baixar telemetria em JSON" class="text-[10px] font-semibold px-2 py-1 rounded bg-elo-bg border border-elo-border text-gray-300 hover:border-elo-teal transition">JSON</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Luminosidade (LDR 0–4095) — mesma fonte /api/telemetry, escala própria -->
+                <div class="bg-elo-card border border-elo-border rounded-xl p-4 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center gap-2">
+                            <i class="fa-solid fa-sun text-amber-400"></i> Telemetria — Luminosidade (LDR)
+                        </h2>
+                        <span class="text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded font-mono">AO VIVO</span>
+                    </div>
+                    <div class="h-36 w-full">
+                        <canvas id="ldrChart"></canvas>
+                    </div>
+                    <p class="text-[10px] text-gray-500 font-mono">Fonte: GET /api/telemetry (LDR do Armazém B, 0–4095)</p>
+                </div>
+
+                <!-- Connected Hardware Nodes (live: GET /api/devices) -->
+                <div class="bg-elo-card border border-elo-border rounded-xl p-4 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center gap-2">
+                            <i class="fa-solid fa-microchip text-elo-teal"></i> Nos de Telemetria
+                        </h2>
+                        <span class="text-xs text-gray-400" id="devices-count-label">…</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs" id="devices-list">
+                        <p class="text-gray-500 text-[11px] py-2 text-center">Carregando dispositivos…</p>
+                    </div>
+                </div>
+
+                <!-- Quick Instructions -->
+                <div class="bg-elo-card/60 border border-elo-border/70 rounded-xl p-3.5 text-xs text-gray-400 space-y-2">
+                    <p class="font-semibold text-gray-300 flex items-center gap-1.5">
+                        <i class="fa-solid fa-circle-info text-elo-teal"></i> Dica de Operação
+                    </p>
+                    <p class="text-[11px] leading-relaxed">
+                        Ative a <span class="text-white">Simulação Automática</span> para ver os eventos gerados automaticamente via MQTT ou clique em <span class="text-white">+ Disparar Evento</span> para simular manualmente.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Right Panel: Live Logs Engine Table -->
+            <div class="lg:col-span-3 space-y-4">
+                
+                <!-- Action Controls Bar -->
+                <div class="bg-elo-card border border-elo-border rounded-xl p-4 flex flex-col md:flex-row gap-4 items-center justify-between shadow-sm">
+                    
+                    <!-- Search & Filter Controls -->
+                    <div class="flex flex-wrap items-center gap-3 w-full md:w-auto flex-1">
+                        <!-- Search Box -->
+                        <div class="relative min-w-[200px] flex-1 sm:flex-initial">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-xs text-gray-400"></i>
+                            <input type="text" id="input-search" onkeyup="filterLogs()" placeholder="Buscar Funcionário ou Local..." class="w-full bg-elo-bg border border-elo-border text-xs rounded-lg pl-8 pr-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-elo-teal transition">
+                        </div>
+
+                        <!-- Location Filter -->
+                        <select id="filter-location" onchange="filterLogs()" class="bg-elo-bg border border-elo-border text-xs rounded-lg px-3 py-2 text-white focus:outline-none focus:border-elo-teal transition">
+                            <option value="">Todos os Locais</option>
+                            <option value="Entrada Principal">Entrada Principal</option>
+                            <option value="Armazém B">Armazém B</option>
+                            <option value="Laboratório P&D">Laboratório P&D</option>
+                            <option value="Corredor 3">Corredor 3</option>
+                            <option value="Recepção Central">Recepção Central</option>
+                        </select>
+
+                        <!-- Camera Filter -->
+                        <select id="filter-camera" onchange="filterLogs()" class="bg-elo-bg border border-elo-border text-xs rounded-lg px-3 py-2 text-white focus:outline-none focus:border-elo-teal transition">
+                            <option value="">Status da Câmera (Todas)</option>
+                            <option value="Ativa">Ativa - Gravação</option>
+                            <option value="Desativada">Desativada</option>
+                        </select>
+                    </div>
+
+                    <!-- Simulation Triggers & Actions -->
+                    <div class="flex items-center space-x-3 w-full md:w-auto justify-end">
+                        
+                        <!-- Auto Sim Toggle (demo traffic via real POST /api/logs, origin=simulacao) -->
+                        <button id="btn-toggle-sim" onclick="toggleAutoSimulation()" title="Gera tráfego demo via POST /api/logs (origin=simulacao)" class="flex items-center space-x-2 bg-elo-bg border border-elo-teal/50 hover:border-elo-teal text-white text-xs px-3.5 py-2 rounded-lg font-medium transition shadow-sm">
+                            <span id="sim-indicator" class="w-2 h-2 rounded-full bg-red-500"></span>
+                            <span id="sim-text">Simulação: OFF</span>
+                        </button>
+
+                        <!-- Manual Event Generator Modal Trigger -->
+                        <button onclick="openManualEventModal()" class="flex items-center space-x-2 bg-elo-teal hover:bg-elo-tealHover text-black font-semibold text-xs px-3.5 py-2 rounded-lg transition shadow-lg shadow-elo-teal/20">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>Disparar Evento</span>
+                        </button>
+
+                        <!-- Refresh from DB -->
+                        <button onclick="refreshAll()" title="Recarregar do banco de dados" class="p-2 text-gray-400 hover:text-elo-teal hover:bg-elo-bg rounded-lg border border-transparent hover:border-elo-border transition">
+                            <i class="fa-solid fa-rotate-right text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Logs Table Header & Container -->
+                <div class="bg-elo-card border border-elo-border rounded-xl shadow-xl overflow-hidden">
+                    <div class="px-5 py-3 border-b border-elo-border flex items-center justify-between bg-elo-card/80">
+                        <div class="flex items-center space-x-2">
+                            <h2 class="text-xs font-bold text-white tracking-wider uppercase">Tabela de Logs em Tempo Real</h2>
+                            <span id="logs-counter-badge" class="bg-elo-teal/15 text-elo-teal text-[10px] font-mono px-2 py-0.5 rounded-full border border-elo-teal/30">12 registros</span>
+                        </div>
+                        <span class="text-[11px] text-gray-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-arrows-rotate text-elo-teal animate-spin" id="sync-spinner" style="animation-duration: 4s;"></i> Sincronizado via API · poll 5s
+                        </span>
+                    </div>
+
+                    <!-- Responsive Table -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse text-xs">
+                            <thead>
+                                <tr class="bg-elo-bg/80 text-gray-400 border-b border-elo-border text-[11px] font-semibold uppercase tracking-wider">
+                                    <th class="py-3 px-4">Hora / Data</th>
+                                    <th class="py-3 px-4">Local</th>
+                                    <th class="py-3 px-4">Status Câmera</th>
+                                    <th class="py-3 px-4">ID Funcionário</th>
+                                    <th class="py-3 px-4 text-center">Face Detectada</th>
+                                    <th class="py-3 px-4 text-right">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody id="logs-table-body" class="divide-y divide-elo-border text-gray-300">
+                                <!-- Dynamic rows injected here by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Empty State Placeholder (hidden by default) -->
+                    <div id="empty-state" class="hidden py-12 text-center text-gray-500 space-y-3">
+                        <i class="fa-solid fa-inbox text-4xl text-gray-600"></i>
+                        <p class="text-sm font-medium">Nenhum evento registrado com os filtros selecionados.</p>
+                    </div>
+                </div>
+
+                <!-- Auditoria do operador (GET /api/audit) — quem armou/desarmou o quê, quando -->
+                <div class="bg-elo-card border border-elo-border rounded-xl shadow-xl overflow-hidden">
+                    <div class="px-5 py-3 border-b border-elo-border flex items-center justify-between bg-elo-card/80">
+                        <div class="flex items-center space-x-2">
+                            <h2 class="text-xs font-bold text-white tracking-wider uppercase">Auditoria do Operador</h2>
+                            <span id="audit-counter-badge" class="bg-elo-teal/15 text-elo-teal text-[10px] font-mono px-2 py-0.5 rounded-full border border-elo-teal/30">…</span>
+                        </div>
+                        <button onclick="loadAudit()" title="Recarregar auditoria" class="p-2 text-gray-400 hover:text-elo-teal hover:bg-elo-bg rounded-lg border border-transparent hover:border-elo-border transition">
+                            <i class="fa-solid fa-rotate-right text-xs"></i>
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse text-xs">
+                            <thead>
+                                <tr class="bg-elo-bg/80 text-gray-400 border-b border-elo-border text-[11px] font-semibold uppercase tracking-wider">
+                                    <th class="py-3 px-4">Hora / Data</th>
+                                    <th class="py-3 px-4">Ator</th>
+                                    <th class="py-3 px-4">Ação</th>
+                                    <th class="py-3 px-4">Dispositivo</th>
+                                    <th class="py-3 px-4">Detalhe</th>
+                                </tr>
+                            </thead>
+                            <tbody id="audit-table-body" class="divide-y divide-elo-border text-gray-300">
+                                <tr><td colspan="5" class="py-4 text-center text-gray-500 text-[11px]">Carregando auditoria…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal 1: Detailed Log Inspection -->
+    <div id="modal-detail" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="bg-elo-card border border-elo-border rounded-2xl max-w-2xl w-full p-6 space-y-6 relative shadow-2xl animate-in fade-in zoom-in duration-150">
+            
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between border-b border-elo-border pb-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-lg bg-elo-teal/10 border border-elo-teal/40 flex items-center justify-center text-elo-teal text-lg">
+                        <i class="fa-solid fa-microchip"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-white" id="modal-title">Detalhes do Evento IoT</h3>
+                        <p class="text-xs text-gray-400" id="modal-subtitle">ID do Evento: #LOG-882942</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('modal-detail')" class="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-elo-border transition">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Modal Content Split -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                <!-- Camera Feed / Snapshot Column -->
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="font-semibold text-gray-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-camera text-elo-teal"></i> Snapshot da Câmera
+                        </span>
+                        <span id="modal-cam-badge" class="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-700 px-2 py-0.5 rounded">CÂMERA ATIVA</span>
+                    </div>
+
+                    <!-- Image Frame with Simulated AI Bounding Box -->
+                    <div class="relative rounded-xl overflow-hidden border border-elo-border bg-black aspect-square flex items-center justify-center group">
+                        <img id="modal-face-img" src="" alt="Face Capturada" class="w-full h-full object-cover">
+                        
+                        <!-- Target Bounding Box -->
+                        <div id="modal-face-box" class="absolute face-box rounded pointer-events-none transition-all duration-300">
+                            <!-- Target Corner Accents -->
+                            <span class="absolute -top-1 -left-1 w-2 h-2 border-t-2 border-l-2 border-elo-teal"></span>
+                            <span class="absolute -top-1 -right-1 w-2 h-2 border-t-2 border-r-2 border-elo-teal"></span>
+                            <span class="absolute -bottom-1 -left-1 w-2 h-2 border-b-2 border-l-2 border-elo-teal"></span>
+                            <span class="absolute -bottom-1 -right-1 w-2 h-2 border-b-2 border-r-2 border-elo-teal"></span>
+                            
+                            <!-- Confidence Tag -->
+                            <div class="absolute -top-6 left-0 bg-elo-teal text-black font-bold text-[9px] px-1.5 py-0.2 rounded shadow">
+                                <span id="modal-confidence">98.6%</span> Match
+                            </div>
+                        </div>
+
+                        <!-- Scanline Effect Overlay -->
+                        <div class="absolute inset-0 scan-overlay animate-scan pointer-events-none opacity-40"></div>
+                        
+                        <!-- Camera Specs Footer Overlay -->
+                        <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 to-transparent p-3 text-[10px] text-gray-300 flex justify-between">
+                            <span>Res: 1920x1080 @ 30fps</span>
+                            <span>Sensor: Sony STARVIS</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Event & Employee Metadata Column -->
+                <div class="space-y-4 text-xs">
+                    
+                    <!-- Employee Info Box -->
+                    <div class="bg-elo-bg p-3.5 rounded-xl border border-elo-border space-y-2">
+                        <p class="text-[10px] uppercase font-bold tracking-wider text-elo-teal">Funcionário Identificado</p>
+                        <div class="flex items-center space-x-3">
+                            <div class="text-2xl text-gray-400">
+                                <i class="fa-solid fa-id-badge"></i>
+                            </div>
+                            <div>
+                                <p class="text-sm font-bold text-white" id="modal-emp-name">Mariana Costa</p>
+                                <p class="text-gray-400" id="modal-emp-role">Gerente de Logística - Operações</p>
+                            </div>
+                        </div>
+                        <div class="pt-2 border-t border-elo-border flex justify-between text-[11px]">
+                            <span class="text-gray-400">ID de Registro:</span>
+                            <span class="font-mono text-white font-semibold" id="modal-emp-id">ELO5-7890</span>
+                        </div>
+                        <div class="flex justify-between text-[11px]">
+                            <span class="text-gray-400">Status de Acesso:</span>
+                            <span class="font-semibold text-emerald-400 flex items-center gap-1" id="modal-access-status">
+                                <i class="fa-solid fa-circle-check"></i> Autorizado
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- IoT Device Telemetry Box -->
+                    <div class="bg-elo-bg p-3.5 rounded-xl border border-elo-border space-y-2">
+                        <p class="text-[10px] uppercase font-bold tracking-wider text-gray-400">Telemetria do Dispositivo IoT</p>
+                        
+                        <div class="grid grid-cols-2 gap-2 text-[11px]">
+                            <div>
+                                <span class="text-gray-500 block">ID Dispositivo:</span>
+                                <span class="font-mono text-white" id="modal-dev-id">IOT-CAM-GATE01</span>
+                            </div>
+                            <div>
+                                <span class="text-gray-500 block">Horário do Log:</span>
+                                <span class="font-mono text-white" id="modal-timestamp">2026-10-01 10:45:12</span>
+                            </div>
+                            <div>
+                                <span class="text-gray-500 block">Localização:</span>
+                                <span class="text-white" id="modal-location">Entrada Principal - Gate 1</span>
+                            </div>
+                            <div>
+                                <span class="text-gray-500 block">Sinal RSSI / Temp:</span>
+                                <span class="text-emerald-400 font-mono">-62 dBm / 38.4°C</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Security Audit Note -->
+                    <div class="p-3 bg-elo-teal/5 border border-elo-teal/20 rounded-xl text-[11px] text-gray-300">
+                        <i class="fa-solid fa-shield-cat text-elo-teal mr-1"></i>
+                        Log assinado criptograficamente com Hash SHA-256 no banco PostgreSQL Elo5.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer Actions -->
+            <div class="flex justify-end space-x-3 border-t border-elo-border pt-4">
+                <button onclick="closeModal('modal-detail')" class="bg-elo-bg border border-elo-border hover:bg-elo-border text-white text-xs px-4 py-2 rounded-lg font-medium transition">
+                    Fechar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 2: Manual Event Injection Form -->
+    <div id="modal-manual" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="bg-elo-card border border-elo-border rounded-2xl max-w-md w-full p-6 space-y-5 relative shadow-2xl">
+            <div class="flex items-center justify-between border-b border-elo-border pb-3">
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-bolt text-elo-teal"></i> Disparar Evento IoT Manual
+                </h3>
+                <button onclick="closeModal('modal-manual')" class="text-gray-400 hover:text-white p-1 rounded-lg">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <form id="form-manual-event" onsubmit="submitManualEvent(event)" class="space-y-4 text-xs">
+                <div>
+                    <label class="block text-gray-400 mb-1">Localização do Dispositivo</label>
+                    <select id="manual-location" required class="w-full bg-elo-bg border border-elo-border rounded-lg p-2.5 text-white focus:border-elo-teal outline-none">
+                        <option value="Entrada Principal - Gate 1">Entrada Principal - Gate 1</option>
+                        <option value="Armazém B - Corredor 3">Armazém B - Corredor 3</option>
+                        <option value="Laboratório P&D - Acesso Restrito">Laboratório P&D - Acesso Restrito</option>
+                        <option value="Recepção Central">Recepção Central</option>
+                        <option value="Diretoria Executiva">Diretoria Executiva</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-gray-400 mb-1">Status da Câmera</label>
+                    <select id="manual-camera-status" required class="w-full bg-elo-bg border border-elo-border rounded-lg p-2.5 text-white focus:border-elo-teal outline-none">
+                        <option value="Ativa">Ativa - Gravação OK</option>
+                        <option value="Desativada">Desativada / Offline</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-gray-400 mb-1">Funcionário Cadastrado</label>
+                    <select id="manual-employee" required class="w-full bg-elo-bg border border-elo-border rounded-lg p-2.5 text-white focus:border-elo-teal outline-none">
+                        <option value="ELO5-7890">Mariana Costa (ID: ELO5-7890)</option>
+                        <option value="ELO5-7891">Carlos Eduardo (ID: ELO5-7891)</option>
+                        <option value="ELO5-7892">Beatriz Lima (ID: ELO5-7892)</option>
+                        <option value="ELO5-7893">Rafael Souza (ID: ELO5-7893)</option>
+                        <option value="ELO5-7896">Fernanda Oliveira (ID: ELO5-7896)</option>
+                        <option value="ELO5-7897">Lucas Mendes (ID: ELO5-7897)</option>
+                        <option value="unknown">ALERTA: Pessoa Não Identificada</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-gray-400 mb-1">Permissão de Acesso</label>
+                    <select id="manual-access" class="w-full bg-elo-bg border border-elo-border rounded-lg p-2.5 text-white focus:border-elo-teal outline-none">
+                        <option value="Autorizado">Autorizado</option>
+                        <option value="Negado">Negado - Alerta de Segurança</option>
+                    </select>
+                </div>
+
+                <div class="pt-3 flex justify-end space-x-2">
+                    <button type="button" onclick="closeModal('modal-manual')" class="bg-elo-bg border border-elo-border text-gray-300 px-4 py-2 rounded-lg">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="bg-elo-teal hover:bg-elo-tealHover text-black font-bold px-4 py-2 rounded-lg transition">
+                        Injetar Log Agora
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // Pool of registered employees matching mock design
+        const EMPLOYEES = [
+            { id: "ELO5-7890", name: "Mariana Costa", role: "Gerente de Logística", dept: "Operações", photo: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80" },
+            { id: "ELO5-7891", name: "Carlos Eduardo", role: "Operador de Máquinas", dept: "Produção", photo: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80" },
+            { id: "ELO5-7892", name: "Beatriz Lima", role: "Analista de Segurança", dept: "TI & Cibersegurança", photo: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80" },
+            { id: "ELO5-7893", name: "Rafael Souza", role: "Supervisor de Estoque", dept: "Armazém B", photo: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80" },
+            { id: "ELO5-7896", name: "Fernanda Oliveira", role: "Diretora de Operações", dept: "Diretoria", photo: "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80" },
+            { id: "ELO5-7897", name: "Lucas Mendes", role: "Técnico de Manutenção", dept: "Infraestrutura", photo: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80" }
+        ];
+
+        const LOCATIONS = [
+            "Entrada Principal - Gate 1",
+            "Entrada Principal - Gate 2",
+            "Armazém B - Corredor 1",
+            "Armazém B - Corredor 3",
+            "Laboratório P&D - Acesso Restrito",
+            "Recepção Central",
+            "Diretoria Executiva"
+        ];
+
+        // State variables — data now lives in SQLite, served by server.js
+        const API_BASE = '';
+        let logsStore = [];
+        let lastTopId = null;
+        let employeesCache = [];
+        let autoSimulationActive = false; // OFF: every row on screen came from the DB
+        let simInterval = null;
+        let audioEnabled = false;
+        let audioCtx = null;
+        let liveChart = null;
+
+        function escapeHtml(s) {
+            return String(s ?? '').replace(/[&<>"']/g, (c) => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
+        }
+
+        // P1: operator token (localStorage) — enviado em rotas mutantes quando
+        // o server.js está com OPERATOR_TOKEN configurado. Sem token no servidor,
+        // segue aberto como no P0.
+        let operatorToken = localStorage.getItem('elo5-operator-token') || '';
+        function operatorHeaders() {
+            return operatorToken ? { 'x-operator-token': operatorToken } : {};
+        }
+        function setOperatorToken(tok) {
+            operatorToken = String(tok || '').trim();
+            if (operatorToken) localStorage.setItem('elo5-operator-token', operatorToken);
+            else localStorage.removeItem('elo5-operator-token');
+        }
+
+        async function api(path, opts) {
+            opts = opts || {};
+            opts.headers = { ...(opts.headers || {}), ...operatorHeaders() };
+            const res = await fetch(API_BASE + path, opts);
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || ('HTTP ' + res.status));
+            }
+            return res.json();
+        }
+
+        function formatTimestamp(date) {
+            const pad = (n) => String(n).padStart(2, '0');
+            const year = date.getFullYear();
+            const month = pad(date.getMonth() + 1);
+            const day = pad(date.getDate());
+            const hours = pad(date.getHours());
+            const mins = pad(date.getMinutes());
+            const secs = pad(date.getSeconds());
+            return `${year}-${month}-${day} ${hours}:${mins}:${secs}`;
+        }
+
+        // Live Clock
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('live-clock').innerText = formatTimestamp(now) + " UTC-3";
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Audio Beep Effect
+        function playBeep(freq = 800, type = 'sine', duration = 0.08) {
+            if (!audioEnabled) return;
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function toggleAudio() {
+            audioEnabled = !audioEnabled;
+            const icon = document.getElementById('sound-icon');
+            if (audioEnabled) {
+                icon.className = 'fa-solid fa-volume-high text-elo-teal';
+                playBeep(900, 'sine', 0.1);
+            } else {
+                icon.className = 'fa-solid fa-volume-xmark text-gray-500';
+            }
+        }
+
+        // Demo traffic: builds a random payload but persists it via POST /api/logs
+        // (origin='simulacao'), exactly like a real MQTT ingest would.
+        function buildSimPayload() {
+            const isUnknown = Math.random() < 0.15; // 15% chance of unauthorized alert
+            const emp = (isUnknown || !employeesCache.length) ? null
+                : employeesCache[Math.floor(Math.random() * employeesCache.length)];
+            const location = LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)];
+            const cameraActive = Math.random() > 0.2; // 80% active camera
+
+            return {
+                location: location,
+                cameraStatus: cameraActive ? 'Ativa' : 'Desativada',
+                employeeId: emp ? emp.id : 'unknown',
+                acesso: isUnknown ? 'Negado' : 'Autorizado',
+                confianca: (94 + Math.random() * 5.8).toFixed(1),
+                deviceId: 'IOT-SIM-' + location.substring(0, 4).toUpperCase().replace(/\s/g, ''),
+                origin: 'simulacao'
+            };
+        }
+
+        function renderLogsTable() {
+            const tbody = document.getElementById('logs-table-body');
+            // Filtering happens server-side (GET /api/logs?search=&location=&camera=);
+            // logsStore already holds exactly the page to render.
+            const filtered = logsStore;
+
+            document.getElementById('logs-counter-badge').innerText = `${filtered.length} registros`;
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = '';
+                document.getElementById('empty-state').classList.remove('hidden');
+                return;
+            } else {
+                document.getElementById('empty-state').classList.add('hidden');
+            }
+
+            // Flash only when the top row is a log we haven't rendered before
+            // (otherwise every 5s poll would re-flash the same row).
+            const topId = filtered.length ? filtered[0].id : null;
+            const topIsFresh = topId && topId !== lastTopId;
+            lastTopId = topId;
+
+            let html = '';
+            filtered.forEach((log, index) => {
+                const isNew = index === 0 && topIsFresh;
+                
+                // Camera status badge
+                let cameraBadge = '';
+                if (log.cameraStatus === 'Ativa') {
+                    cameraBadge = `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium bg-emerald-950/80 text-emerald-400 border border-emerald-800/60">
+                        <span class="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Ativa - Gravação
+                    </span>`;
+                } else {
+                    cameraBadge = `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium bg-gray-900 text-gray-400 border border-gray-800">
+                        <i class="fa-solid fa-video-slash text-xs"></i> Desativada
+                    </span>`;
+                }
+
+                // Employee ID badge
+                let empBadge = '';
+                if (log.employee) {
+                    empBadge = `<span class="font-mono font-semibold text-white bg-elo-bg px-2 py-0.5 rounded border border-elo-border">${escapeHtml(log.employee.id)}</span>`;
+                } else {
+                    empBadge = `<span class="font-semibold text-amber-400 bg-amber-950/40 px-2 py-0.5 rounded border border-amber-800/40">Não Identificado</span>`;
+                }
+
+                // Face preview thumbnail with target bounding frame
+                let faceThumb = '';
+                if (log.faceDetected && log.employee) {
+                    faceThumb = `
+                        <div class="relative w-9 h-9 rounded-md overflow-hidden border border-elo-teal/60 mx-auto shadow">
+                            <img src="${escapeHtml(log.employee.photo)}" class="w-full h-full object-cover" loading="lazy" onerror="this.src='https://placehold.co/100x100/1f2937/00b894?text=Face'">
+                            <div class="absolute inset-0 border border-elo-teal animate-pulse"></div>
+                        </div>
+                    `;
+                } else if (log.faceDetected && !log.employee) {
+                    faceThumb = `
+                        <div class="relative w-9 h-9 rounded-md overflow-hidden border border-amber-500 mx-auto bg-amber-950/50 flex items-center justify-center text-amber-400">
+                            <i class="fa-solid fa-user-secret text-sm"></i>
+                        </div>
+                    `;
+                } else {
+                    faceThumb = `
+                        <div class="w-9 h-9 rounded-md bg-elo-bg border border-elo-border mx-auto flex items-center justify-center text-gray-600">
+                            <i class="fa-solid fa-eye-slash text-xs"></i>
+                        </div>
+                    `;
+                }
+
+                html += `
+                    <tr class="hover:bg-elo-hover/70 transition-colors duration-150 ${isNew ? 'animate-flash-new' : ''}">
+                        <td class="py-3 px-4 font-mono text-gray-300">${escapeHtml(log.timestamp)}</td>
+                        <td class="py-3 px-4 font-medium text-white">${escapeHtml(log.location)}</td>
+                        <td class="py-3 px-4">${cameraBadge}</td>
+                        <td class="py-3 px-4">${empBadge}</td>
+                        <td class="py-3 px-4 text-center">${faceThumb}</td>
+                        <td class="py-3 px-4 text-right">
+                            <button onclick="viewLogDetail('${log.id}')" class="text-xs bg-elo-bg hover:bg-elo-teal hover:text-black text-elo-teal border border-elo-teal/40 font-medium px-2.5 py-1 rounded transition flex items-center gap-1 ml-auto">
+                                <i class="fa-solid fa-magnifying-glass-plus"></i> Detalhes
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            tbody.innerHTML = html;
+        }
+
+        function buildQuery() {
+            const params = new URLSearchParams();
+            const search = document.getElementById('input-search').value.trim();
+            const location = document.getElementById('filter-location').value;
+            const camera = document.getElementById('filter-camera').value;
+            if (search) params.set('search', search);
+            if (location) params.set('location', location);
+            if (camera) params.set('camera', camera);
+            params.set('limit', '50');
+            return params.toString();
+        }
+
+        async function loadLogs() {
+            try {
+                logsStore = await api('/api/logs?' + buildQuery());
+                renderLogsTable();
+            } catch (e) {
+                console.error('Falha ao carregar logs:', e);
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const s = await api('/api/stats');
+                document.getElementById('metric-total-logs').innerText = s.totalHoje.toLocaleString('pt-BR');
+                document.getElementById('metric-captures-count').innerText = s.capturasHoje.toLocaleString('pt-BR');
+                document.getElementById('stat-alerts-count').innerText = s.alertasHoje;
+                document.getElementById('stat-devices-count').innerText = s.devicesOnline + '/' + s.devicesTotal;
+            } catch (e) {
+                console.error('Falha ao carregar métricas:', e);
+            }
+        }
+
+        async function checkServer() {
+            const dot = document.getElementById('server-dot');
+            const label = document.getElementById('server-status');
+            const lat = document.getElementById('server-latency');
+            const t0 = performance.now();
+            try {
+                await api('/api/health');
+                const ms = Math.round(performance.now() - t0);
+                dot.className = 'h-3 w-3 rounded-full bg-emerald-500 animate-pulse';
+                label.innerText = 'API Local';
+                lat.innerText = 'Latência: ' + ms + 'ms';
+            } catch (e) {
+                dot.className = 'h-3 w-3 rounded-full bg-red-500';
+                label.innerText = 'API Offline';
+                lat.innerText = 'sem conexão — suba com: node server.js';
+            }
+        }
+
+        // Prepend a freshly created log (already persisted in SQLite)
+        // without waiting for the next poll cycle.
+        function prependLog(logItem) {
+            logsStore.unshift(logItem);
+            if (logsStore.length > 50) logsStore.pop();
+            if (logItem.accessStatus === 'Negado') {
+                playBeep(400, 'sawtooth', 0.2); // Alert tone
+            } else {
+                playBeep(1200, 'sine', 0.05); // Normal tone
+            }
+            renderLogsTable();
+            updateChartData();
+            loadStats();
+        }
+
+        // Auditoria do operador (GET /api/audit) — quem armou/desarmou o quê, quando.
+        // Em modo aberto (P0) lista direto; com OPERATOR_TOKEN exige o token do topo.
+        async function loadAudit() {
+            const tbody = document.getElementById('audit-table-body');
+            const badge = document.getElementById('audit-counter-badge');
+            if (!tbody) return;
+            try {
+                const rows = await api('/api/audit?limit=30');
+                const list = Array.isArray(rows) ? rows : [];
+                if (badge) badge.innerText = list.length + (list.length === 1 ? ' registro' : ' registros');
+                if (!list.length) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="py-4 text-center text-gray-500 text-[11px]">Nenhuma ação de operador registrada ainda — arme/desamarre um dispositivo.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = list.map((a) => `
+                    <tr class="hover:bg-elo-hover/70 transition-colors duration-150">
+                        <td class="py-2.5 px-4 font-mono text-gray-300 whitespace-nowrap">${escapeHtml(a.timestamp)}</td>
+                        <td class="py-2.5 px-4 font-mono text-[11px] text-elo-teal">${escapeHtml(a.actor)}</td>
+                        <td class="py-2.5 px-4 font-medium text-white">${escapeHtml(a.action)}</td>
+                        <td class="py-2.5 px-4 font-mono text-[11px] text-gray-400">${escapeHtml(a.device_id || '—')}</td>
+                        <td class="py-2.5 px-4 text-gray-400 text-[11px]">${escapeHtml(a.detail || '')}</td>
+                    </tr>`).join('');
+            } catch (e) {
+                if (badge) badge.innerText = '—';
+                const needToken = /operador não autenticado/i.test(e.message || '');
+                tbody.innerHTML = needToken
+                    ? '<tr><td colspan="5" class="py-4 text-center text-amber-400 text-[11px]">Defina o token do operador no topo para ver a auditoria.</td></tr>'
+                    : '<tr><td colspan="5" class="py-4 text-center text-gray-500 text-[11px]">API offline — suba com: node server.js</td></tr>';
+            }
+        }
+
+        async function refreshAll() {
+            await Promise.all([loadLogs(), loadStats(), checkServer(), loadAudit()]);
+        }
+
+        function initChart() {
+            const ctx = document.getElementById('liveChart').getContext('2d');
+            const gradient = ctx.createLinearGradient(0, 0, 0, 150);
+            gradient.addColorStop(0, 'rgba(0, 184, 148, 0.4)');
+            gradient.addColorStop(1, 'rgba(0, 184, 148, 0.0)');
+
+            // P1: começa vazio — updateChartData() preenche com GET /api/telemetry.
+            liveChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Distância (cm)',
+                        data: [],
+                        borderColor: '#00b894',
+                        backgroundColor: gradient,
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#00b894'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#6b7280', font: { size: 9 } } },
+                        y: { grid: { color: '#1f2937' }, ticks: { color: '#6b7280', font: { size: 9 } } }
+                    }
+                }
+            });
+        }
+
+        // P1: gráfico real — distância (cm) do Armazém B via GET /api/telemetry.
+        // Sem telemetria ainda, mantém o placeholder sem inventar dados.
+        // +LDR: segundo gráfico (luminosidade 0–4095) com a mesma fonte, escala própria.
+        let chartDeviceId = null;
+        let ldrChart = null;
+        function initLdrChart() {
+            const el = document.getElementById('ldrChart');
+            if (!el || typeof Chart === 'undefined') return;
+            const ctx = el.getContext('2d');
+            const gradient = ctx.createLinearGradient(0, 0, 0, 150);
+            gradient.addColorStop(0, 'rgba(251, 191, 36, 0.4)');
+            gradient.addColorStop(1, 'rgba(251, 191, 36, 0.0)');
+            ldrChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Luminosidade (LDR)',
+                        data: [],
+                        borderColor: '#fbbf24',
+                        backgroundColor: gradient,
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#fbbf24'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#6b7280', font: { size: 9 } } },
+                        y: { grid: { color: '#1f2937' }, ticks: { color: '#6b7280', font: { size: 9 } }, suggestedMin: 0, suggestedMax: 4095 }
+                    }
+                }
+            });
+        }
+        async function updateChartData() {
+            if (!liveChart && !ldrChart) return;
+            try {
+                const qs = chartDeviceId
+                    ? ('?device_id=' + encodeURIComponent(chartDeviceId) + '&limit=24')
+                    : '?limit=24';
+                const rows = await api('/api/telemetry' + qs);
+                const list = Array.isArray(rows) ? rows : [];
+                if (liveChart) {
+                    const samples = list
+                        .filter((r) => r.dist !== null && r.dist !== undefined && Number(r.dist) < 900)
+                        .slice(-24);
+                    if (samples.length) { // sem dados: não inventa
+                        liveChart.data.labels = samples.map((r) => String(r.timestamp).slice(11, 16));
+                        liveChart.data.datasets[0].data = samples.map((r) => Number(r.dist));
+                        liveChart.data.datasets[0].label = 'Distância (cm)';
+                        liveChart.update();
+                    }
+                }
+                if (ldrChart) {
+                    const ldrSamples = list
+                        .filter((r) => r.ldr !== null && r.ldr !== undefined)
+                        .slice(-24);
+                    if (ldrSamples.length) { // sem dados: não inventa
+                        ldrChart.data.labels = ldrSamples.map((r) => String(r.timestamp).slice(11, 16));
+                        ldrChart.data.datasets[0].data = ldrSamples.map((r) => Number(r.ldr));
+                        ldrChart.update();
+                    }
+                }
+            } catch (e) {
+                console.error('Falha ao carregar telemetria:', e);
+            }
+        }
+
+        // P2: exporta telemetria (CSV/JSON) via GET /api/telemetry/export.
+        // Usa fetch direto (não o helper api()) porque CSV é blob, não JSON.
+        async function exportTelemetry(format) {
+            try {
+                const qs = chartDeviceId
+                    ? ('?format=' + encodeURIComponent(format) + '&device_id=' + encodeURIComponent(chartDeviceId) + '&limit=5000')
+                    : ('?format=' + encodeURIComponent(format) + '&limit=5000');
+                const res = await fetch(API_BASE + '/api/telemetry/export' + qs, { headers: { ...operatorHeaders() } });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.error || ('HTTP ' + res.status));
+                }
+                const blob = await res.blob();
+                const ext = format === 'json' ? 'json' : 'csv';
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'elo5-telemetry.' + ext;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 5000);
+            } catch (e) {
+                alert('Falha ao exportar telemetria: ' + e.message);
+            }
+        }
+
+        function viewLogDetail(id) {
+            const log = logsStore.find(l => l.id === id);
+            if (!log) return;
+
+            document.getElementById('modal-title').innerText = `Detalhes do Log - ${log.id}`;
+            document.getElementById('modal-timestamp').innerText = log.timestamp;
+            document.getElementById('modal-location').innerText = log.location;
+            document.getElementById('modal-dev-id').innerText = log.deviceId;
+
+            const camBadge = document.getElementById('modal-cam-badge');
+            if (log.cameraStatus === 'Ativa') {
+                camBadge.className = "text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-700 px-2 py-0.5 rounded";
+                camBadge.innerText = "CÂMERA ATIVA";
+            } else {
+                camBadge.className = "text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2 py-0.5 rounded";
+                camBadge.innerText = "DESATIVADA";
+            }
+
+            const img = document.getElementById('modal-face-img');
+            const faceBox = document.getElementById('modal-face-box');
+            
+            if (log.employee) {
+                img.src = log.employee.photo;
+                document.getElementById('modal-emp-name').innerText = log.employee.name;
+                document.getElementById('modal-emp-role').innerText = `${log.employee.role} - ${log.employee.dept}`;
+                document.getElementById('modal-emp-id').innerText = log.employee.id;
+                faceBox.style.display = 'block';
+                faceBox.style.top = '20%';
+                faceBox.style.left = '25%';
+                faceBox.style.width = '50%';
+                faceBox.style.height = '50%';
+                document.getElementById('modal-confidence').innerText = log.confidence + '%';
+            } else {
+                img.src = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80';
+                document.getElementById('modal-emp-name').innerText = 'Pessoa Não Cadastrada';
+                document.getElementById('modal-emp-role').innerText = 'Alerta de Segurança / Visitante';
+                document.getElementById('modal-emp-id').innerText = 'N/A';
+                faceBox.style.display = 'none';
+            }
+
+            const accessBadge = document.getElementById('modal-access-status');
+            if (log.accessStatus === 'Autorizado') {
+                accessBadge.className = 'font-semibold text-emerald-400 flex items-center gap-1';
+                accessBadge.innerHTML = '<i class="fa-solid fa-circle-check"></i> Autorizado';
+            } else {
+                accessBadge.className = 'font-semibold text-red-400 flex items-center gap-1';
+                accessBadge.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Negado - Alerta';
+            }
+
+            document.getElementById('modal-detail').classList.remove('hidden');
+            document.getElementById('modal-detail').classList.add('flex');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.add('hidden');
+            document.getElementById(modalId).classList.remove('flex');
+        }
+
+        function openManualEventModal() {
+            document.getElementById('modal-manual').classList.remove('hidden');
+            document.getElementById('modal-manual').classList.add('flex');
+        }
+
+        async function submitManualEvent(e) {
+            e.preventDefault();
+            const location = document.getElementById('manual-location').value;
+            const camStatus = document.getElementById('manual-camera-status').value;
+            const empVal = document.getElementById('manual-employee').value;
+            const accessStatus = document.getElementById('manual-access').value;
+
+            // The <select> now carries real employee DB ids (unknown = unidentified).
+
+            try {
+                const created = await api('/api/logs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        location,
+                        cameraStatus: camStatus,
+                        employeeId: empVal === '' ? 'unknown' : empVal,
+                        acesso: accessStatus,
+                        confianca: (96 + Math.random() * 3.8).toFixed(1),
+                        deviceId: 'IOT-MANUAL-01',
+                        origin: 'manual'
+                    })
+                });
+                prependLog(created);
+                closeModal('modal-manual');
+            } catch (err) {
+                alert('Falha ao gravar evento: ' + err.message);
+            }
+        }
+
+        // Search-as-you-type, debounced so each keystroke isn't a request.
+        let filterTimer = null;
+        function filterLogs() {
+            clearTimeout(filterTimer);
+            filterTimer = setTimeout(loadLogs, 250);
+        }
+
+        function toggleAutoSimulation() {
+            autoSimulationActive = !autoSimulationActive;
+            const ind = document.getElementById('sim-indicator');
+            const txt = document.getElementById('sim-text');
+
+            if (autoSimulationActive) {
+                ind.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
+                txt.innerText = 'Simulação: ON';
+                startSimulation();
+            } else {
+                ind.className = 'w-2 h-2 rounded-full bg-red-500';
+                txt.innerText = 'Simulação: OFF';
+                clearInterval(simInterval);
+            }
+        }
+
+        // Demo traffic generator. OFF by default: when enabled it POSTs a
+        // random-but-valid payload to /api/logs every 2.5s (origin='simulacao'),
+        // exercising the exact same path a real MQTT ingest will use in Phase 2.
+        function startSimulation() {
+            if (simInterval) clearInterval(simInterval);
+            simInterval = setInterval(async () => {
+                if (!autoSimulationActive) return;
+                try {
+                    const created = await api('/api/logs', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(buildSimPayload())
+                    });
+                    prependLog(created);
+                } catch (e) {
+                    console.error('Simulação falhou (API offline?):', e);
+                }
+            }, 2500);
+        }
+
+        // ---- Phase 2: live devices panel (GET /api/devices) ----
+        const DEVICE_ICONS = [
+            { match: /portaria|gate/i, icon: 'fa-door-open', color: 'text-elo-teal' },
+            { match: /armaz/i, icon: 'fa-warehouse', color: 'text-blue-400' },
+            { match: /lab|p&d/i, icon: 'fa-vial-virus', color: 'text-amber-400' },
+            { match: /diretoria/i, icon: 'fa-building', color: 'text-purple-400' },
+        ];
+
+        function deviceIcon(local) {
+            for (const d of DEVICE_ICONS) {
+                if (d.match.test(local)) return d;
+            }
+            return { icon: 'fa-microchip', color: 'text-gray-400' };
+        }
+
+        // P0: comando com confirmação — o POST só enfileira; o ESP confirma
+        // via .../state ou .../log e a bridge dá retry até lá (QoS 0-safe).
+        // O botão mostra "Enviando…" até o ACK chegar (ou falhar).
+        const pendingCommands = new Map(); // deviceId -> {id, action, status, attempts}
+
+        async function pollCommandStatus(deviceId, cmdId) {
+            const t0 = Date.now();
+            let last = pendingCommands.get(deviceId);
+            while (Date.now() - t0 < 45000) {
+                await new Promise((r) => setTimeout(r, 1500));
+                try {
+                    const s = await api('/api/commands/' + cmdId);
+                    pendingCommands.set(deviceId, s);
+                    last = s;
+                    loadDevices();
+                    if (s.status === 'acked' || s.status === 'failed') break;
+                } catch (e) {
+                    console.error('Falha ao consultar comando:', e);
+                    break;
+                }
+            }
+            // Mantém o estado final visível por alguns segundos e libera os botões.
+            const holdMs = last && last.status === 'failed' ? 10000 : 4000;
+            setTimeout(() => {
+                if (pendingCommands.get(deviceId)?.id === cmdId) {
+                    pendingCommands.delete(deviceId);
+                    loadDevices();
+                }
+            }, holdMs);
+        }
+
+        async function sendDeviceCommand(deviceId, action) {
+            const pend = pendingCommands.get(deviceId);
+            if (pend && (pend.status === 'pending' || pend.status === 'sending')) return;
+            // P1: se o servidor exige operador e não há token, pede antes de falhar.
+            try {
+                const health = await api('/api/health').catch(() => null);
+                if (health && health.auth && health.auth.operatorRequired && !operatorToken) {
+                    const tokInput = document.getElementById('operator-token');
+                    if (tokInput) { tokInput.classList.remove('hidden'); tokInput.focus(); }
+                    alert('Defina o token do operador no topo (campo "Token operador").');
+                    return;
+                }
+            } catch { /* health é best-effort */ }
+            try {
+                const queued = await api('/api/devices/' + encodeURIComponent(deviceId) + '/command', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action })
+                });
+                pendingCommands.set(deviceId, {
+                    id: queued.id, action: queued.action,
+                    status: queued.status || 'pending', attempts: 0,
+                });
+                loadDevices();
+                pollCommandStatus(deviceId, queued.id);
+            } catch (e) {
+                alert('Falha ao enviar comando: ' + e.message);
+            }
+        }
+
+        // Rotação do usuário MQTT (PATCH /api/mqtt-users/:id) — atualiza só o
+        // metadado e audita. A senha troca-se fora: `mosquitto_passwd` no broker
+        // + MQTT_PASSWORD no ESP (secrets.h). Nunca via API.
+        async function rotateMqttUser(deviceId, currentUser) {
+            // P1: se o servidor exige operador e não há token, pede antes de falhar.
+            try {
+                const health = await api('/api/health').catch(() => null);
+                if (health && health.auth && health.auth.operatorRequired && !operatorToken) {
+                    const tokInput = document.getElementById('operator-token');
+                    if (tokInput) { tokInput.classList.remove('hidden'); tokInput.focus(); }
+                    alert('Defina o token do operador no topo (campo "Token operador").');
+                    return;
+                }
+            } catch { /* health é best-effort */ }
+            const next = prompt(
+                'Novo usuário MQTT para ' + deviceId + ' (letras, números, ponto, _ ou -).\n' +
+                'Depois troque a SENHA no broker (mosquitto_passwd) e no ESP (MQTT_PASSWORD).',
+                currentUser || 'elo5-esp'
+            );
+            if (next === null) return; // cancelou
+            const mqttUser = String(next).trim();
+            if (!mqttUser) { alert('Usuário vazio — nada foi alterado.'); return; }
+            try {
+                await api('/api/mqtt-users/' + encodeURIComponent(deviceId), {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mqtt_user: mqttUser })
+                });
+                alert('Usuário MQTT atualizado para "' + mqttUser + '".\nLembrete: troque a senha no broker + ESP, senão o nó perde a conexão.');
+                loadDevices();
+                loadAudit();
+            } catch (e) {
+                alert('Falha na rotação: ' + e.message);
+            }
+        }
+
+        function fmtTelemetry(dev) {
+            if (!dev.last_telemetry) return '';
+            try {
+                const t = JSON.parse(dev.last_telemetry);
+                const parts = [];
+                if (t.dist !== undefined && t.dist < 900) parts.push('Dist ' + t.dist + 'cm');
+                if (t.pir) parts.push('PIR ativo');
+                if (t.ldr !== undefined) parts.push('LDR ' + t.ldr);
+                if (t.ldr_anomaly) parts.push('⚠ luz');
+                return parts.length ? parts.join(' · ') : '';
+            } catch { return ''; }
+        }
+
+        async function loadDevices() {
+            const list = document.getElementById('devices-list');
+            const label = document.getElementById('devices-count-label');
+            try {
+                const devs = await api('/api/devices');
+                // P1: o gráfico segue o Armazém B (nó ESP32) quando presente.
+                try {
+                    const esp = devs.find((d) => d.mqtt_node) || null;
+                    chartDeviceId = esp ? esp.id : null;
+                } catch { /* mantém o anterior */ }
+                label.innerText = devs.length + (devs.length === 1 ? ' Unidade' : ' Unidades');
+                list.innerHTML = devs.map((dev) => {
+                    const { icon, color } = deviceIcon(dev.local);
+                    const online = dev.status === 'ONLINE';
+                    const alarming = !!dev.alarming;
+                    const badge = alarming
+                        ? '<span class="text-[10px] text-red-400 font-mono bg-red-950/60 border border-red-800/50 px-1.5 py-0.5 rounded animate-pulse">ALARME</span>'
+                        : online
+                            ? '<span class="text-[10px] text-emerald-400 font-mono bg-emerald-950/60 border border-emerald-800/50 px-1.5 py-0.5 rounded">ONLINE</span>'
+                            : '<span class="text-[10px] text-gray-500 font-mono bg-gray-900 border border-gray-800 px-1.5 py-0.5 rounded">OFFLINE</span>';
+                    const armBadge = dev.armed === 1
+                        ? '<span class="text-[10px] text-amber-400 font-mono bg-amber-950/60 border border-amber-800/50 px-1.5 py-0.5 rounded">ARMADO</span>'
+                        : dev.armed === 0
+                            ? '<span class="text-[10px] text-gray-500 font-mono bg-gray-900 border border-gray-800 px-1.5 py-0.5 rounded">DESARMADO</span>'
+                            : '';
+                    const tele = fmtTelemetry(dev);
+                    const pend = pendingCommands.get(dev.id);
+                    const busy = pend && (pend.status === 'pending' || pend.status === 'sending');
+                    const pendLine = pend
+                        ? (pend.status === 'acked'
+                            ? '<p class="text-[10px] text-emerald-400 font-mono mt-1.5">✓ Confirmado pelo ESP32</p>'
+                            : pend.status === 'failed'
+                                ? '<p class="text-[10px] text-red-400 font-mono mt-1.5">✗ Sem resposta do ESP32 — tente de novo</p>'
+                                : '<p class="text-[10px] text-amber-400 font-mono mt-1.5 animate-pulse">Enviando ' + escapeHtml(pend.action) + '…</p>')
+                        : '';
+                    const rotateBtn = dev.mqtt_node ? `
+                        <button onclick="rotateMqttUser('${escapeHtml(dev.id)}', '${escapeHtml(dev.mqtt_user || '')}')" title="Trocar usuário MQTT (só metadado — a senha troca-se no broker + ESP)" class="w-full mt-1.5 text-[10px] font-mono px-2 py-1 rounded bg-elo-bg border border-elo-border text-gray-500 hover:text-amber-400 hover:border-amber-800/50 transition">⟳ MQTT ${escapeHtml(dev.mqtt_user || 'sem user')}</button>` : '';
+                    const cmds = dev.mqtt_node ? `
+                        <div class="flex gap-1.5 mt-2">
+                            <button ${busy ? 'disabled' : ''} onclick="sendDeviceCommand('${escapeHtml(dev.id)}', 'arm')" title="Armar alarme" class="flex-1 text-[10px] font-semibold px-2 py-1 rounded bg-amber-950/60 border border-amber-800/50 text-amber-400 hover:bg-amber-900/60 transition disabled:opacity-40 disabled:cursor-wait">Armar</button>
+                            <button ${busy ? 'disabled' : ''} onclick="sendDeviceCommand('${escapeHtml(dev.id)}', 'disarm')" title="Desarmar alarme" class="flex-1 text-[10px] font-semibold px-2 py-1 rounded bg-elo-bg border border-elo-border text-gray-300 hover:border-elo-teal transition disabled:opacity-40 disabled:cursor-wait">Desarmar</button>
+                        </div>${pendLine}${rotateBtn}` : '';
+                    return `
+                        <div class="p-2.5 bg-elo-bg rounded-lg border ${alarming ? 'border-red-800/60' : 'border-elo-border'}">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center space-x-2.5">
+                                    <i class="fa-solid ${icon} ${color}"></i>
+                                    <div>
+                                        <p class="text-white font-medium">${escapeHtml(dev.local)}</p>
+                                        <p class="text-[10px] text-gray-400">${escapeHtml(dev.tipo || '')}</p>
+                                        ${tele ? `<p class="text-[10px] text-elo-teal font-mono">${escapeHtml(tele)}</p>` : ''}
+                                        ${dev.mqtt_user ? `<p class="text-[10px] text-gray-500 font-mono">MQTT ${escapeHtml(dev.mqtt_user)}</p>` : ''}
+                                    </div>
+                                </div>
+                                <div class="flex flex-col items-end gap-1">${badge}${armBadge}</div>
+                            </div>
+                            ${cmds}
+                        </div>`;
+                }).join('');
+            } catch (e) {
+                console.error('Falha ao carregar dispositivos:', e);
+                list.innerHTML = '<p class="text-gray-500 text-[11px] py-2 text-center">API offline — suba com: node server.js</p>';
+            }
+        }
+
+        window.onload = async function() {
+            // P1: restaura o token salvo e mostra o campo só se o servidor exigir auth.
+            try {
+                const tokInput = document.getElementById('operator-token');
+                if (tokInput) {
+                    tokInput.value = operatorToken || '';
+                    tokInput.addEventListener('change', () => {
+                        setOperatorToken(tokInput.value);
+                    });
+                    const health = await api('/api/health').catch(() => null);
+                    if (health && health.auth && health.auth.operatorRequired) {
+                        tokInput.classList.remove('hidden');
+                        tokInput.classList.add('md:block');
+                    }
+                }
+            } catch (e) { console.error(e); }
+            initChart();
+            initLdrChart();
+            try {
+                employeesCache = await api('/api/employees');
+                // Keep the legacy EMPLOYEES array in sync so the manual-event
+                // modal (index-based <select>) resolves to real DB ids.
+                if (employeesCache.length) {
+                    EMPLOYEES.length = 0;
+                    employeesCache.forEach((e) => EMPLOYEES.push({
+                        id: e.id, name: e.nome, role: e.cargo, dept: e.depto, photo: e.foto_url
+                    }));
+                }
+            } catch (e) {
+                console.error('API offline — abra via http://localhost:3000 (node server.js):', e);
+            }
+            await refreshAll();
+            await loadDevices();
+            await loadAudit();
+            await updateChartData(); // P1: primeira carga real antes do poll
+            startSimulation(); // armed but idle until the toggle is switched ON
+            setInterval(loadLogs, 5000);  // live poll: table follows the DB
+            setInterval(loadStats, 10000);
+            setInterval(checkServer, 15000);
+            setInterval(loadDevices, 5000);
+            setInterval(updateChartData, 10000); // P1: gráfico segue a telemetria
+            setInterval(loadAudit, 15000); // auditoria segue os comandos do operador
+        };
+    </script>
+</body>
+</html>

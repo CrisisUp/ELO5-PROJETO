@@ -1,0 +1,16 @@
+{
+  "name": "elo5-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Elo5 System — API + SQLite + ponte MQTT (Fase 2: ESP32 Armazém B)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "mqtt": "^5.10.0"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}
