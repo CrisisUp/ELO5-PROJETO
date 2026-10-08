@@ -6,7 +6,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/pure.test.js test/config-middlewares.test.js"
+    "test": "node --test test/pure.test.js test/config-middlewares.test.js test/repositories-services.test.js"
   },
   "dependencies": {
     "mqtt": "^5.10.0"
