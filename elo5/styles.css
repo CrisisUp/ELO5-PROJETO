@@ -1,0 +1,49 @@
+/* Elo5 — Custom styles extracted from index.html inline <style> */
+/* Keep Tailwind config in index.html (CDN requirement) */
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: #0b0f19;
+}
+::-webkit-scrollbar-thumb {
+    background: #1f2937;
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #00b894;
+}
+
+/* Face detection bounding box */
+.face-box {
+    border: 2px solid #00b894;
+    box-shadow: 0 0 8px rgba(0, 184, 148, 0.8);
+}
+
+/* Scanline overlay animation */
+.scan-overlay {
+    background: linear-gradient(to bottom, transparent 0%, rgba(0, 184, 148, 0.2) 50%, transparent 100%);
+}
+
+/* Animation keyframes (referenced by Tailwind config in index.html) */
+@keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 0 15px rgba(0, 184, 148, 0.3); }
+    50% { box-shadow: 0 0 25px rgba(0, 184, 148, 0.7); }
+}
+@keyframes flashNew {
+    0% { background-color: rgba(0, 184, 148, 0.3); transform: translateY(-4px); }
+    100% { background-color: transparent; transform: translateY(0); }
+}
+@keyframes scanline {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(100%); }
+}
+
+/* Selection colors */
+::selection {
+    background-color: #00b894;
+    color: #000;
+}
