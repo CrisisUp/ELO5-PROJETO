@@ -25,23 +25,28 @@ Solução de telemetria e monitoramento patrimonial para armazéns industriais b
                                       |   Grafana v10.4     |
                                       | (Dashboard Central) |
                                       +---------------------+
-
-Camada de Borda (Sensoriamento): ESP32 capturando dados de proximidade (HC-SR04), presença (PIR) e luminosidade (LDR).
 ```
 
-Camada de Integração: Backend Node.js processando telemetrias e estados do alarme.
+## Camada de Borda (Sensoriamento)
 
-Camada de Banco de Dados: InfluxDB 2.7 (armazenamento otimizado de séries temporais).
+ESP32 capturando dados de proximidade (HC-SR04), presença (PIR) e luminosidade (LDR).
 
-Camada de Visualização: Grafana com painel analítico de detecção de intrusão e auditoria temporal.
+## Camada de Integração
+Backend Node.js processando telemetrias e estados do alarme.
 
-🚀 Como Executar o Ambiente
+## Camada de Banco de Dados
+InfluxDB 2.7 (armazenamento otimizado de séries temporais).
 
-Pré-requisitos
+## Camada de Visualização
+Grafana com painel analítico de detecção de intrusão e auditoria temporal.
 
-Docker Desktop com suporte a WSL2 configurado.
+## 🚀 Como Executar o Ambiente
 
-Node.js (versão LTS recomendada).
+### Pré-requisitos
+
+### Docker Desktop com suporte a WSL2 configurado.
+
+### Node.js (versão LTS recomendada).
 
 1. Inicializar os Contêineres (Stack TIG / IoT)
 
@@ -53,41 +58,83 @@ docker compose up -d
 
 Para verificar o status dos contêineres:
 
-PowerShell
+```PowerShell
 docker compose ps
+```
 
-2. Portas e Acessos PadrãoServiçoURL de AcessoPortaFunçãoGrafanahttp://localhost:30003000Visualização dos Dashboards de SegurançaInfluxDBhttp://localhost:80868086Banco de Dados de Séries TemporaisTelegraf—8092 / 8094Coletor de métricas de infraestrutura
+2. Portas e Acessos Padrão
 
-🔑 Credenciais e Variáveis de Ambiente PadrãoAs credenciais pré-configuradas no docker-compose.yml para desenvolvimento local são:InfluxDB 2.7Usuário: adminSenha: adminpassword123Organização: seguranca_patrimonialBucket Principal: armazem_telemetriaToken de Operador / Admin:PlaintextSuperSecretTokenSecurity2026==
-GrafanaUsuário: adminSenha: admin
+Serviço    URL de Acesso          Porta         Função
+Grafana    http://localhost:3000  3000          Visualização dos Dashboards de Segurança
+InfluxDB   http://localhost:8086  8086          Banco de Dados de Séries Temporais
+Telegraf            —             8092/8094     Coletor de métricas de infraestrutura
 
-⚙️ Configuração do Data Source no GrafanaAcesse o Grafana em http://localhost:3000 e navegue até Connections > Data Sources > Add data source > InfluxDB.Ajuste os seguintes parâmetros:Query Language: FluxURL: http://security_influxdb:8086 (comunicação interna pela rede Docker)Basic auth: DesativadoOrganization: seguranca_patrimonialToken: SuperSecretTokenSecurity2026==Default Bucket: armazem_telemetriaClique em Save & test para validar a conexão.
+## 🔑 Credenciais e Variáveis de Ambiente Padrão
+
+As credenciais pré-configuradas no docker-compose.yml para desenvolvimento local são:
+
+### InfluxDB 2.7
+Usuário: admin
+Senha: adminpassword123
+Organização: seguranca_patrimonial
+Bucket Principal: armazem_telemetria
+Token de Operador / Admin: SuperSecretTokenSecurity2026==
+
+### Grafana
+Usuário: admin
+Senha: admin
+
+## ⚙️ Configuração do Data Source no Grafana
+
+Acesse o Grafana em http://localhost:3000 e navegue até Connections > Data Sources > Add data source > InfluxDB.
+Ajuste os seguintes parâmetros:
+Query Language: Flux
+URL: http://security_influxdb:8086 (comunicação interna pela rede Docker)
+Basic auth: Desativado
+Organization: seguranca_patrimonial
+Token: SuperSecretTokenSecurity2026==Default 
+Bucket: armazem_telemetria
+Clique em Save & test para validar a conexão.
 
 📊 Estrutura de Telemetria e Measurements
 
 O banco InfluxDB recebe e consome os dados nas seguintes estruturas:
 
-1. security_sensorsdist (float/int): Distância em centímetros medida pelo sensor ultrassônico HC-SR04 (alerta para leituras abaixo de 40 cm).pir (boolean): Detecção de presença/movimento (0 = Livre, 1 = Intrusão).ldr (int): Nível analógico de luminosidade lido pelo ADC (0 a 4095).ldr_anomaly (boolean): Flag indicadora de oscilação anômala de luz no galpão.
+1. security_sensors
+dist (float/int): Distância em centímetros medida pelo sensor ultrassônico HC-SR04 (alerta para leituras abaixo de 40 cm).
+pir (boolean): Detecção de presença/movimento (0 = Livre, 1 = Intrusão).
+ldr (int): Nível analógico de luminosidade lido pelo ADC (0 a 4095).
+ldr_anomaly (boolean): Flag indicadora de oscilação anômala de luz no galpão.
 
-2. security_statearmed (boolean): Indica se o sistema de alarme está ativo.alarm (boolean): Estado de disparo do alarme de intrusão.
+2. security_state
+armed (boolean): Indica se o sistema de alarme está ativo.
+alarm (boolean): Estado de disparo do alarme de intrusão.
 
-📈 Importação do DashboardNo Grafana, acesse Dashboards > New > Import.Cole o conteúdo JSON do dashboard no campo Import via panel json.Associe o DataSource configurado (influxdb) e clique em Import.
+## 📈 Importação do Dashboard
 
-🛑 Comandos ÚteisAcompanhar logs dos contêineres:
+No Grafana, acesse Dashboards > New > Import.
+Cole o conteúdo JSON do dashboard no campo Import via panel json.
+Associe o DataSource configurado (influxdb) e clique em Import.
 
-PowerShell
+## 🛑 Comandos Úteis
 
+Acompanhar logs dos contêineres:
+
+```PowerShell
 docker compose logs -f
+```
 
 Parar a infraestrutura:
 
-PowerShell
+```PowerShell
 docker compose down
+```
 
 Parar e limpar volumes persistidos (reset completo do banco):
 
-PowerShell
+```PowerShell
 docker compose down -v
+```
 
 ---
 
